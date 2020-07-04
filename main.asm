@@ -14,30 +14,30 @@ plotxy:                         ; puts pixel into (si,di) of color dl
                                 ; changed dx to ax, al to dl: (same length)
 
 lineDraw:                       ; draws line from (si,di) to (cx,dx)
-    mov ax, dx
-    sub ax, di                  ; ax = |toy-fromy|
+    mov bp, dx
+    sub bp, di                  ; bp = |toy-fromy|
     mov bx, cx
     sub bx, si                  ; bx = |tox-fromx|
-    shl ax, 1                   ; ax = 2*deltay
-    mov bp, ax
-    sub bp, bx                  ; bp = 2*deltay - deltax
-    shl bx, 1                   ; bx = 2*deltax
+    shl bp, 1                   ; bp = 2*deltay
+    mov ax, bp
+    sub ax, bx                  ; ax = 2*deltay - deltbp
+    shl bx, 1                   ; bx = 2*deltbp
     mov dl, 5
 
 ld2:
     call plotxy
-    cmp bp,0
+    cmp ax,0
     jle noyinc
     inc di
-    sub bp, bx
+    sub ax, bx
 noyinc:
-    add bp, ax
+    add ax, bp
     cmp si, cx
     jbe ld2
 
     ret                         ; lineDraw: 0x55-0x1e bytes (55) 
                                 ; using the unused dx for color instead of ax: 0x51-0x1e bytes (51) 
-                                ; swapping bp & ax: 
+                                ; swapping bp & ax: same length
 main:
     mov ax, 0A000h
     mov es, ax
