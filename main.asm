@@ -1,3 +1,6 @@
+cpu 386
+; use16
+
 plotxy:                         ; puts pixel into (si,di) of color dl
                                 ; assumes: es=video seg
     push di
