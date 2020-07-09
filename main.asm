@@ -25,23 +25,23 @@ plotxy:                         ; puts pixel into (si,di) of color dh
     pop di
     ret                         ; plotxy: 0x1e-0x00 bytes (30)
                                 ; changed dx to ax, al to dl: (same length)
-								; changed dl to dh to give room for dl in caller (lineDraw)
+				; changed dl to dh to give room for dl in caller (lineDraw)
 
 lineDraw:                       ; draws line from (si,di) to (cx,dx)
 
-	cmp cx, si					; check whether tox > fromx, handle octant3..6 cases by swapping from <-> to coords
+	cmp cx, si		; check whether tox > fromx: handle octant3..6 cases by swapping coords from <-> to
 	jae noSwapFromTo
-	xchg cx, si					; if so, fromx <-> tox
-	xchg dx, di					;    and fromy <-> toy
+	xchg cx, si		; if so, fromx <-> tox
+	xchg dx, di		;    and fromy <-> toy
 noSwapFromTo:	
 
     mov bp, dx
     sub bp, di                  ; bp = toy-fromy, could be negative
-	lea dx, [1]					; set y coord to increasing by default (not touching flags)
-	jnc yIncreasing				; if it was dx >= di case, leave it like that
-	mov dx, -1					; if dx < di, set y coord to decreasing and
-	neg bp						; negate bp to achieve absolute value
-yIncreasing:					; bp = |toy-fromy|
+	lea dx, [1]		; set y coord to increasing by default (not touching flags)
+	jnc yIncreasing		; if it was dx >= di case, leave it like that
+	mov dx, -1		; if dx < di, set y coord to decreasing and
+	neg bp			; negate bp to achieve absolute value
+yIncreasing:			; bp = |toy-fromy|
     mov bx, cx
     sub bx, si                  ; bx = |tox-fromx| = tox-fromx, since we assured tox >= fromx
 
@@ -51,17 +51,17 @@ yIncreasing:					; bp = |toy-fromy|
     shl bx, 1                   ; bx = 2*deltax
 
 lineDrawMainLoop:
-    mov dh, 5					; set color to dh
-    call plotxy					; draw (si,di), color dh
-	movsx dx, dl				; reset dx=dl=Yincrement=+1 or -1
-    cmp ax,0					; check if error reached threshold
-    jle skipYincNow				; if no, line won't step
-    add di, dx					; increment/decrement current y coord if needed
-    sub ax, bx					; error -= 2*deltax
+    mov dh, 5			; set color to dh
+    call plotxy			; draw (si,di), color dh
+    movsx dx, dl		; reset dx=dl=Yincrement=+1 or -1
+    cmp ax,0			; check if error reached threshold
+    jle skipYincNow		; if no, line won't step
+    add di, dx			; increment/decrement current y coord if needed
+    sub ax, bx			; error -= 2*deltax
 skipYincNow:
-    add ax, bp					; error += 2*deltay
-	inc si						; increment current x coord
-    cmp si, cx					; have we reached tox?
+    add ax, bp			; error += 2*deltay
+    inc si			; increment current x coord
+    cmp si, cx			; have we reached tox?
     jbe lineDrawMainLoop
 
     ret                         ; lineDraw: 0x55-0x1e bytes (55) 
@@ -75,13 +75,13 @@ main:
     mov sp, 320*200
     mov ax, 13h
     int 10h                     ; VGA Mode 13h set
-    mov dx, 250     ; toy
-    mov cx, 510     ; tox
-    mov di, 210     ; fromy
-    mov si, 330     ; fromx
+    mov dx, 250     		; toy
+    mov cx, 510     		; tox
+    mov di, 210     		; fromy
+    mov si, 330     		; fromx
     call lineDraw
 
                                 ; total so far 81h bytes
                                 ; using dl for color & using dx in linedraw 78h bytes
-								; inc si bugfix: 7ah bytes
-	nop							; total so far 110 bytes (with 0x66 prefix avoided)
+				; inc si bugfix: 7ah bytes
+    nop				; total so far 110 bytes (with 0x66 prefix avoided)
