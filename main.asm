@@ -11,7 +11,9 @@ cpu 386
 ;  / | \
 ; /  |  \
 
-plotxy:                         ; puts pixel into (si,di) of color dh
+plotxy_color:	db 5			; color of the pixel drawn in plotxy
+
+plotxy:                         ; puts pixel into (si,di) of color plotxy_color
                                 ; assumes: es=video seg
     push di
     push ax
@@ -20,68 +22,138 @@ plotxy:                         ; puts pixel into (si,di) of color dh
     shl ax, 2                   ; ax=y * 256
     add di, ax                  ; di=y*(64+256)=320
     add di, si                  ; di=y*320+x
-    mov [es:di], dh
+	mov al, [plotxy_color]
+    mov [es:di], al
     pop ax
     pop di
-    ret                         ; plotxy: 0x1e-0x00 bytes (30)
-                                ; changed dx to ax, al to dl: (same length)
-				; changed dl to dh to give room for dl in caller (lineDraw)
+    ret                         
+                                
+lineDraw:						; draws line from (si,di) to (cx,dx) with color plotxy_color
 
-lineDraw:                       ; draws line from (si,di) to (cx,dx)
+	; lineDraw_part1: this part here checks whether |tox-fromx|<=>|toy-fromy| and sets dh so (0 iff "horizontal dominant",
+	; 1 iff "vertical dominant"), then swaps source and destination points if dominant axis coords are not 
+	; in order, (e.g. if |tox < fromx| >= |toy-fromy| (horiz. dom.) and tox < fromx, (cx, dx) <-> (si, di)),
+	; futhermore sets whether the other (submissive) axis will be increasing (1) or decreasing (-1) after all that
+	; AH: 0 iff horiz dominant, 1 iff vert; AL: +1 or -1 submissive direction inc/dec
 
-	cmp cx, si		; check whether tox > fromx: handle octant3..6 cases by swapping coords from <-> to
-	jae noSwapFromTo
-	xchg cx, si		; if so, fromx <-> tox
-	xchg dx, di		;    and fromy <-> toy
-noSwapFromTo:	
+	mov bp, dx					; BP will be |toy-fromy| later, first step isolated to save space
+	
+	mov bx, cx
+	sub bx, si					; BX = tox-fromx
+	jno XinOrder
+	neg bx						; BX = |tox-fromx|
+	sub bp, di					; was BP=toy already, BP = toy-fromy now
+	jno XnotInOrder_YinOrder
+	neg bp						; BP = |toy-fromy|
+	
+	; case 1: X not in order, Y not in order, swapping will be inevitable
+	cmp bx, bp
+	setc ah						; CPU80386 AH=0 iff dominant direction is horizontal
+	mov al, 1					; AL=1: having swapped source<->dest, submissive direction will be increasing
+	jmp lineDraw_part2
+	
+XnotInOrder_YinOrder:
 
-    mov bp, dx
-    sub bp, di                  ; bp = toy-fromy, could be negative
-	lea dx, [1]		; set y coord to increasing by default (not touching flags)
-	jnc yIncreasing		; if it was dx >= di case, leave it like that
-	mov dx, -1		; if dx < di, set y coord to decreasing and
-	neg bp			; negate bp to achieve absolute value
-yIncreasing:			; bp = |toy-fromy|
-    mov bx, cx
-    sub bx, si                  ; bx = |tox-fromx| = tox-fromx, since we assured tox >= fromx
+	; case 2: X not in order, but Y is, swapping will be necessary iif X is dominant
+	mov ax, 0x01FF				; Y dominant case will be default: AH=1, AL=-1, no src<->dst swapping
+	cmp bx, bp
+	jnc lineDraw_part2			; if Y dominant, leave the defaults
+	xchg cx, si					; if X dom, swap source <-> destination
+	xchg dx, di
+	dec ah						; AH=0 as X is dominant (submissive Y will be in wrong order after swap, so AL should stay -1)
+	jmp lineDraw_part2
+	
+XinOrder:
+	sub bp, di					; was BP=toy already, BP = toy-fromy now
+	jno XinOrder_YinOrder
+	neg bp						; BP = |toy-fromy|
+	
+	; case 3: X is in order, Y isn't, swapping wil be necessary iif Y is dominant
+	mov ax, 0x00FF				; X dom. will be default: AH=0, AL=-1, no src<->dst swapping
+	cmp bx, bp
+	jnc lineDraw_part2			; X dominant: leave the defaults
+	xchg cx, si					; Y dominant: swap source <-> destination
+	xchg dx, di
+	inc ah						; AH=1 as Y is dominant (submissive X will be in wrong order after swap, so AL should stay -1)
+	jmp lineDraw_part2
+	
+XinOrder_YinOrder:
 
-    shl bp, 1                   ; bp = 2*deltay
+	; case 4: both X and Y are in order, no swapping will take place
+	cmp bx, bp
+	setc ah
+	mov al, 1
+	
+lineDraw_part2:
+	; lineDraw_part2: this is the actual drawing part; preconditions: 
+	; - all input arguments intact yet (CX, DX, SI, DI)
+	; - BP = |toy-fromy| =: deltay, BX = |tox-fromx| =: deltax
+	; - AH = 0 iif horiz dominant, 1 iff vert dominant
+	; - AL = 1 iff submissive direction should increase, -1 iff it should decrease
+
+	test AH, 0
+	jnz lineDraw_part2vert
+	
+	; lineDraw_part2/horizontal_dominant
+	movsx dx, al				; 80386//DX will be used to hold the step in submissive (Y) direction
+	
+    shl bp, 1					; BP = 2*deltay
     mov ax, bp
-    sub ax, bx                  ; ax = 2*deltay - deltax
-    shl bx, 1                   ; bx = 2*deltax
+    sub ax, bx					; AX = 2*deltay - deltax
+    shl bx, 1					; BX = 2*deltax
 
-lineDrawMainLoop:
-    mov dh, 5			; set color to dh
-    call plotxy			; draw (si,di), color dh
-    movsx dx, dl		; reset dx=dl=Yincrement=+1 or -1
-    cmp ax,0			; check if error reached threshold
-    jle skipYincNow		; if no, line won't step
-    add di, dx			; increment/decrement current y coord if needed
-    sub ax, bx			; error -= 2*deltax
+lineDrawMainLoop_horzdom:
+    call plotxy					; draw (SI,DI), color plotxy_color
+    cmp ax,0					; check if error reached threshold
+    jle skipYincNow				; if no, line won't step into submissive direction
+    add di, dx					; increment/decrement current y coord if needed (delta = DX)
+    sub ax, bx					; error -= 2*deltax
 skipYincNow:
-    add ax, bp			; error += 2*deltay
-    inc si			; increment current x coord
-    cmp si, cx			; have we reached tox?
-    jbe lineDrawMainLoop
+    add ax, bp					; error += 2*deltay
+    inc si						; increment current x coord
+    cmp si, cx					; have we reached tox?
+    jbe lineDrawMainLoop_horzdom
+	
+lineDraw_part2vert:
+	; lineDraw_part2/vertical_dominant
+	movsx cx, al				; 80386//CX will be used to hold the step in submissive (X) direction
+	
+    shl bx, 1					; BX = 2*deltax
+    mov ax, bx
+    sub ax, bp					; AX = 2*deltax - deltay
+    shl bp, 1					; BP = 2*deltay
+	
+	
+lineDrawMainLoop_vertdom:
+    call plotxy					; draw (SI,DI), color plotxy_color
+    cmp ax,0					; check if error reached threshold
+    jle skipXincNow				; if no, line won't step into submissive direction
+    add si, cx					; increment/decrement current x coord if needed (delta = CX)
+    sub ax, bp					; error -= 2*deltay
+skipXincNow:
+    add ax, bx					; error += 2*deltax
+    inc di						; increment current y coord
+    cmp di, dx					; have we reached toy?
+    jbe lineDrawMainLoop_horzdom
+	
+    ret
 
-    ret                         ; lineDraw: 0x55-0x1e bytes (55) 
-                                ; using the unused dx for color instead of ax: 0x51-0x1e bytes (51) 
-                                ; swapping bp & ax: same length
-                                ; bugfix: added inc si: +2 bytes, 0x53-0x1e (53)
 main:
     mov ax, 0A000h
     mov es, ax
     mov ss, ax
     mov sp, 320*200
     mov ax, 13h
-    int 10h                     ; VGA Mode 13h set
-    mov dx, 250     		; toy
-    mov cx, 510     		; tox
-    mov di, 210     		; fromy
-    mov si, 330     		; fromx
+    int 10h						; VGA Mode 13h set
+    mov dx, 250					; toy
+    mov cx, 510					; tox
+    mov di, 210					; fromy
+    mov si, 330					; fromx
     call lineDraw
 
-                                ; total so far 81h bytes
-                                ; using dl for color & using dx in linedraw 78h bytes
-				; inc si bugfix: 7ah bytes
-    nop				; total so far 110 bytes (with 0x66 prefix avoided)
+	nop							; end
+	
+; stats
+; plotxy		18h bytes	(24)
+; lineDraw		18h-9eh		(134)
+; total			0h-0bch		(188)
