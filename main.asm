@@ -40,16 +40,18 @@ lineDraw:						; draws line from (si,di) to (cx,dx) with color plotxy_color
 	
 	mov bx, cx
 	sub bx, si					; BX = tox-fromx
-	jno XinOrder
+	jge XinOrder
 	neg bx						; BX = |tox-fromx|
 	sub bp, di					; was BP=toy already, BP = toy-fromy now
-	jno XnotInOrder_YinOrder
+	jge XnotInOrder_YinOrder
 	neg bp						; BP = |toy-fromy|
 	
 	; case 1: X not in order, Y not in order, swapping will be inevitable
 	cmp bx, bp
 	setc ah						; CPU80386 AH=0 iff dominant direction is horizontal
 	mov al, 1					; AL=1: having swapped source<->dest, submissive direction will be increasing
+	xchg cx, si					; if X dom, swap source <-> destination
+	xchg dx, di
 	jmp lineDraw_part2
 	
 XnotInOrder_YinOrder:
@@ -57,7 +59,7 @@ XnotInOrder_YinOrder:
 	; case 2: X not in order, but Y is, swapping will be necessary iif X is dominant
 	mov ax, 0x01FF				; Y dominant case will be default: AH=1, AL=-1, no src<->dst swapping
 	cmp bx, bp
-	jnc lineDraw_part2			; if Y dominant, leave the defaults
+	jc lineDraw_part2			; if Y dominant, leave the defaults
 	xchg cx, si					; if X dom, swap source <-> destination
 	xchg dx, di
 	dec ah						; AH=0 as X is dominant (submissive Y will be in wrong order after swap, so AL should stay -1)
@@ -65,7 +67,7 @@ XnotInOrder_YinOrder:
 	
 XinOrder:
 	sub bp, di					; was BP=toy already, BP = toy-fromy now
-	jno XinOrder_YinOrder
+	jge XinOrder_YinOrder
 	neg bp						; BP = |toy-fromy|
 	
 	; case 3: X is in order, Y isn't, swapping wil be necessary iif Y is dominant
@@ -91,7 +93,7 @@ lineDraw_part2:
 	; - AH = 0 iif horiz dominant, 1 iff vert dominant
 	; - AL = 1 iff submissive direction should increase, -1 iff it should decrease
 
-	test AH, 0
+	test ah, ah
 	jnz lineDraw_part2vert
 	
 	; lineDraw_part2/horizontal_dominant
@@ -112,7 +114,7 @@ skipYincNow:
     add ax, bp					; error += 2*deltay
     inc si						; increment current x coord
     cmp si, cx					; have we reached tox?
-    jbe lineDrawMainLoop_horzdom
+    jle lineDrawMainLoop_horzdom
 	
 lineDraw_part2vert:
 	; lineDraw_part2/vertical_dominant
@@ -134,7 +136,7 @@ skipXincNow:
     add ax, bx					; error += 2*deltax
     inc di						; increment current y coord
     cmp di, dx					; have we reached toy?
-    jbe lineDrawMainLoop_horzdom
+    jle lineDrawMainLoop_horzdom
 	
     ret
 
