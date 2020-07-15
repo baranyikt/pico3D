@@ -13,21 +13,21 @@ cpu 386
 
 plotxy_color:	db 5			; color of the pixel drawn in plotxy
 
-plotxy:                         ; puts pixel into (si,di) of color plotxy_color
-                                ; assumes: es=video seg
-    push di
-    push ax
-    shl di, 6                   ; mul di, 320
-    mov ax, di                  ; ax=di=y * 64
-    shl ax, 2                   ; ax=y * 256
-    add di, ax                  ; di=y*(64+256)=320
-    add di, si                  ; di=y*320+x
+plotxy:							; puts pixel into (si,di) of color plotxy_color
+								; assumes: es=video seg
+	push di
+	push ax
+	shl di, 6					; mul di, 320
+	mov ax, di					; ax=di=y * 64
+	shl ax, 2					; ax=y * 256
+	add di, ax					; di=y*(64+256)=320
+	add di, si					; di=y*320+x
 	mov al, [plotxy_color]
-    mov [es:di], al
-    pop ax
-    pop di
-    ret                         
-                                
+	mov [es:di], al
+	pop ax
+	pop di
+	ret
+
 lineDraw:						; draws line from (si,di) to (cx,dx) with color plotxy_color
 
 	; lineDraw_part1: this part here checks whether |tox-fromx|<=>|toy-fromy| and sets dh so (0 iff "horizontal dominant",
@@ -97,65 +97,65 @@ lineDraw_part2:
 	jnz lineDraw_part2vert
 	
 	; lineDraw_part2/horizontal_dominant
-	movsx dx, al				; 80386//DX will be used to hold the step in submissive (Y) direction
+	movsx dx, al				; CPU80386//DX will be used to hold the step in submissive (Y) direction
 	
-    shl bp, 1					; BP = 2*deltay
-    mov ax, bp
-    sub ax, bx					; AX = 2*deltay - deltax
-    shl bx, 1					; BX = 2*deltax
+	shl bp, 1					; BP = 2*deltay
+	mov ax, bp
+	sub ax, bx					; AX = 2*deltay - deltax
+	shl bx, 1					; BX = 2*deltax
 
 lineDrawMainLoop_horzdom:
-    call plotxy					; draw (SI,DI), color plotxy_color
-    cmp ax,0					; check if error reached threshold
-    jle skipYincNow				; if no, line won't step into submissive direction
-    add di, dx					; increment/decrement current y coord if needed (delta = DX)
-    sub ax, bx					; error -= 2*deltax
+	call plotxy					; draw (SI,DI), color plotxy_color
+	cmp ax,0					; check if error reached threshold
+	jle skipYincNow				; if no, line won't step into submissive direction
+	add di, dx					; increment/decrement current y coord if needed (delta = DX)
+	sub ax, bx					; error -= 2*deltax
 skipYincNow:
-    add ax, bp					; error += 2*deltay
-    inc si						; increment current x coord
-    cmp si, cx					; have we reached tox?
-    jle lineDrawMainLoop_horzdom
+	add ax, bp					; error += 2*deltay
+	inc si						; increment current x coord
+	cmp si, cx					; have we reached tox?
+	jle lineDrawMainLoop_horzdom
 	
 lineDraw_part2vert:
 	; lineDraw_part2/vertical_dominant
-	movsx cx, al				; 80386//CX will be used to hold the step in submissive (X) direction
+	movsx cx, al				; CPU80386//CX will be used to hold the step in submissive (X) direction
 	
-    shl bx, 1					; BX = 2*deltax
-    mov ax, bx
-    sub ax, bp					; AX = 2*deltax - deltay
-    shl bp, 1					; BP = 2*deltay
+	shl bx, 1					; BX = 2*deltax
+	mov ax, bx
+	sub ax, bp					; AX = 2*deltax - deltay
+	shl bp, 1					; BP = 2*deltay
 	
 	
 lineDrawMainLoop_vertdom:
-    call plotxy					; draw (SI,DI), color plotxy_color
-    cmp ax,0					; check if error reached threshold
-    jle skipXincNow				; if no, line won't step into submissive direction
-    add si, cx					; increment/decrement current x coord if needed (delta = CX)
-    sub ax, bp					; error -= 2*deltay
+	call plotxy					; draw (SI,DI), color plotxy_color
+	cmp ax,0					; check if error reached threshold
+	jle skipXincNow				; if no, line won't step into submissive direction
+	add si, cx					; increment/decrement current x coord if needed (delta = CX)
+	sub ax, bp					; error -= 2*deltay
 skipXincNow:
-    add ax, bx					; error += 2*deltax
-    inc di						; increment current y coord
-    cmp di, dx					; have we reached toy?
-    jle lineDrawMainLoop_horzdom
+	add ax, bx					; error += 2*deltax
+	inc di						; increment current y coord
+	cmp di, dx					; have we reached toy?
+	jle lineDrawMainLoop_horzdom
 	
-    ret
+	ret
 
 main:
-    mov ax, 0A000h
-    mov es, ax
-    mov ss, ax
-    mov sp, 320*200
-    mov ax, 13h
-    int 10h						; VGA Mode 13h set
-    mov dx, 250					; toy
-    mov cx, 510					; tox
-    mov di, 210					; fromy
-    mov si, 330					; fromx
-    call lineDraw
+	mov ax, 0A000h
+	mov es, ax
+	mov ss, ax
+	mov sp, 320*200
+	mov ax, 13h
+	int 10h						; VGA Mode 13h set
+	mov dx, 250					; toy
+	mov cx, 510					; tox
+	mov di, 210					; fromy
+	mov si, 330					; fromx
+	call lineDraw
 
 	nop							; end
 	
 ; stats
-; plotxy		18h bytes	(24)
-; lineDraw		18h-9eh		(134)
-; total			0h-0bch		(188)
+; plotxy		01h-18h		(23)
+; lineDraw		18h-a1h		(137)
+; total			0h-0bfh		(191)
