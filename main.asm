@@ -266,4 +266,3 @@ main:
 ; projector			e7h-15eh	(119)
 ; main				15eh-17ch	(30)
 ; total							380 bytes
-; total			0h-0bfh		(191)
