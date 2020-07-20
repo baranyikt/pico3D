@@ -23,7 +23,7 @@ plotxy:							; puts pixel into (si,di) of color plotxy_color
 	add di, ax					; di=y*(64+256)=320
 	add di, si					; di=y*320+x
 	mov al, [plotxy_color]
-	mov [es:di], al
+	stosb
 	pop ax
 	pop di
 	ret
@@ -190,7 +190,7 @@ projector:
 calcOneSide:
 	lea di, [tx1]				; set to ....1 variableset
 	push cx						; save cx for outer loop
-	mov cx, 2					; two vertices at a time
+	mov cl, 2					; two vertices at a time -- setting CL is enough assuming that POLYGONSIZE will be < 256 at all times
 calcOneVertex:	
 	fild word [si]				; [ pgn[i].x, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
 	fsub st2					; [ pgn[i].x-ply.x, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
