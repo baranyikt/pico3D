@@ -35,7 +35,7 @@ lineDraw:						; draws line from (si,di) to (cx,dx) with color plotxy_color
 	; in order, (e.g. if |tox < fromx| >= |toy-fromy| (horiz. dom.) and tox < fromx, (cx, dx) <-> (si, di)),
 	; futhermore sets whether the other (submissive) axis will be increasing (1) or decreasing (-1) after all that
 	; AH: 0 iff horiz dominant, 1 iff vert; AL: +1 or -1 submissive direction inc/dec
-
+	
 	mov bp, dx					; BP will be |toy-fromy| later, first step isolated to save space
 	
 	mov bx, cx
@@ -137,7 +137,7 @@ skipXincNow:
 	inc di						; increment current y coord
 	cmp di, dx					; have we reached toy?
 	jle lineDrawMainLoop_horzdom
-	
+
 	ret
 	
 plyangle:
@@ -177,6 +177,9 @@ tz2:	dd 0
 x2:		dw 0
 y2top:	dw 0
 y2bot:	dw 0
+
+HORZ_CENTER	equ	160
+VERT_CENTER	equ 100
 
 	
 projector:
@@ -239,6 +242,40 @@ calcOneVertex:
 	add si, POLYGONENTRY		; move to next vertex
 	add di, TEMPVARSIZE			; move to ...2 variableset
 	loop calcOneVertex
+
+	mov si, HORZ_CENTER			; preparing to draw side defined by x1,y1top/y1bot,x2,y2top/y2bot
+	mov cx, si
+	mov di, VERT_CENTER
+	mov dx, di
+
+	pusha						; pusha instead of individual push's, stack memory is cheaper than instruction space
+								; +1 saves si,di,cx,dx at HCENTER,VCENTER,HCENTER,VCENTER
+	
+	add si, [x1]
+	add cx, [x2]
+	pusha						; +2 saves si,di,cx,dx at HCENTER+x1,VCENTER,HCENTER+x2,VCENTER
+	add di, [y1top]
+	add dx, [y2top]
+	call lineDraw				; TOP edge: (HCENTER+x1,VCENTER+y1top)->(HCENTER+x2,VCENTER+y2top)
+	popa						; +1 restores HCENTER+x1,VCENTER,HCENTER+x2,VCENTER
+	add di, [y1bot]
+	add dx, [y2bot]
+	call lineDraw				; BOTTOM edge: (HCENTER+x1,VCENTER+y1bot)->(HCENTER+x2,VCENTER+y2bot)
+	popa						; 0 restores HCENTER,VCENTER,HCENTER,VCENTER
+	
+	pusha						; +1 saves HCENTER,VCENTER,HCENTER,VCENTER
+	add si, [x1]
+	add di, [y1top]
+	mov cx, si
+	add dx, [y1bot]
+	call lineDraw				; LEFT edge: (HCENTER+x1,VCENTER+y1top)->(HCENTER+x1,VCENTER+y1bot)
+	popa						; 0 restores HCENTER,VCENTER,HCENTER,VCENTER
+	add si, [x2]
+	add di, [y2top]
+	mov cx, si
+	add dx, [y2bot]
+	call lineDraw				; RIGHT edge: (HCENTER+x2,VCENTER+y2top)->(HCENTER+x2,VCENTER+y2bot)
+	
 	
 	pop cx
 	sub si, POLYGONENTRY		; two steps forward minus one step back = one step fwd
@@ -251,11 +288,6 @@ main:
 	mov sp, 320*200
 	mov ax, 13h
 	int 10h						; VGA Mode 13h set
-	mov dx, 250					; toy
-	mov cx, 510					; tox
-	mov di, 210					; fromy
-	mov si, 330					; fromx
-	call lineDraw
 
 	nop							; end
 	
