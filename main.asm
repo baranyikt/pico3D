@@ -11,8 +11,6 @@ cpu 386
 ;  / | \
 ; /  |  \
 
-plotxy_color:	db 5			; color of the pixel drawn in plotxy
-
 plotxy:							; puts pixel into (si,di) of color plotxy_color
 								; assumes: es=video seg
 	push di
@@ -147,11 +145,6 @@ RIGHT_ARROW	equ	074h
 SLIDE_LEFT	equ	06Ch	; HOME
 SLIDE_RIGHT	equ	069h	; END
 	
-plyangle:
-	dd 0
-plycoords:
-	dd 0, 0
-
 plyangleDelta:
 	dd 0.01
 	
@@ -172,26 +165,9 @@ zoomWOAspect:
 	dw 100						; zoom value (alone), factor of Y coords
 wallHeight:
 	dw 50
-	
-	
-tx1:	dd 0
-tz1:	dd 0
-x1:		dw 0
-y1top:	dw 0
-y1bot:	dw 0
-
-TEMPVARSIZE	equ ($-tx1)
-
-tx2:	dd 0
-tz2:	dd 0
-x2:		dw 0
-y2top:	dw 0
-y2bot:	dw 0
 
 HORZ_CENTER	equ	160
 VERT_CENTER	equ 100
-
-	
 	
 main:
 	mov ax, 0A000h
@@ -387,10 +363,33 @@ drawOneSide:
 	
 	nop							; end
 	
+plotxy_color:	resb 1			; color of the pixel drawn in plotxy
+
+plyangle:
+	resd 1
+plycoords:
+	resd 2
+
+tx1:	resd 1
+tz1:	resd 1
+x1:		resw 1
+y1top:	resw 1
+y1bot:	resw 1
+
+TEMPVARSIZE	equ ($-tx1)
+
+tx2:	resd 1
+tz2:	resd 1
+x2:		resw 1
+y2top:	resw 1
+y2bot:	resw 1
+
 ; stats
-; plotxy			01h-18h		(23)
-; lineDraw			18h-a1h		(137)
-; projector vars	a1h-e7h		(70)
-; projector			e7h-15eh	(119)
-; main				15eh-17ch	(30)
-; total							380 bytes
+; plotxy			00h-15h		(21)
+; lineDraw			15h-9eh		(137)
+; consts			9eh-c0h		(34)
+; main				c0h-13fh	(127)
+; projector			13fh-1b3h	(116)
+; drawOneSide		1b3h-204h	(81)
+; total							516 bytes
+
