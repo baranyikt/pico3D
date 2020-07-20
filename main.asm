@@ -243,6 +243,14 @@ calcOneVertex:
 	add di, TEMPVARSIZE			; move to ...2 variableset
 	loop calcOneVertex
 
+	call drawOneSide			; draw side defined by x1,y1top/y1bot,x2,y2top/y2bot
+
+	pop cx
+	sub si, POLYGONENTRY		; two steps forward minus one step back = one step fwd
+
+	loop calcOneSide
+	
+drawOneSide:
 	mov si, HORZ_CENTER			; preparing to draw side defined by x1,y1top/y1bot,x2,y2top/y2bot
 	mov cx, si
 	mov di, VERT_CENTER
@@ -276,10 +284,7 @@ calcOneVertex:
 	add dx, [y2bot]
 	call lineDraw				; RIGHT edge: (HCENTER+x2,VCENTER+y2top)->(HCENTER+x2,VCENTER+y2bot)
 	
-	
-	pop cx
-	sub si, POLYGONENTRY		; two steps forward minus one step back = one step fwd
-	loop calcOneSide
+	ret
 	
 main:
 	mov ax, 0A000h
