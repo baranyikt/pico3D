@@ -140,11 +140,21 @@ skipXincNow:
 
 	ret
 	
+UP_ARROW	equ	075h
+DOWN_ARROW	equ	072h
+LEFT_ARROW	equ	06Bh
+RIGHT_ARROW	equ	074h
+SLIDE_LEFT	equ	06Ch	; HOME
+SLIDE_RIGHT	equ	069h	; END
+	
 plyangle:
 	dd 0
 plycoords:
 	dd 0, 0
 
+plyangleDelta:
+	dd 0.01
+	
 polygon: 
 	dw 0, 1
 	dw 2, 3
@@ -156,7 +166,7 @@ POLYGONENTRY equ (2 * 2)
 POLYGONSIZE equ (($-polygon)/POLYGONENTRY) - 1
 
 	
-aspectTimesZoom: 
+zoomTimesAspect: 
 	dw 160						; aspect ratio * zoom value = 320/200 * 100, factor of X coords
 zoomWOAspect:
 	dw 100						; zoom value (alone), factor of Y coords
@@ -182,11 +192,100 @@ HORZ_CENTER	equ	160
 VERT_CENTER	equ 100
 
 	
-projector:
+	
+main:
+	mov ax, 0A000h
+	mov es, ax
+	mov ss, ax
+	mov sp, 320*200
+	mov ax, 13h
+	int 10h						; VGA Mode 13h set
+	
 	fld dword [plyangle]		; 
 	fsincos						; [ cos(plyangle), sin(plyangle) ]
 	fld dword [plycoords]		;
 	fld dword [plycoords+4]		; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	jmp projector				; at the very first time, having set up preconditions for projector, jump there straight 
+								; 	to have our first screen layout before any key need to be pressed
+keyPress:
+	xor ah, ah
+	int 16h						; AH=0: pause and get keypress
+	cmp ah, UP_ARROW
+	je keyPress_forward
+	cmp ah, DOWN_ARROW
+	je keyPress_backward
+	cmp ah, LEFT_ARROW
+	je keyPress_turnLeftRight
+	cmp ah, RIGHT_ARROW
+	je keyPress_turnLeftRight
+;	cmp ah, SLIDE_LEFT			; SLIDING: switched off feature -- doesn't fit in 512 bytes
+;	je keyPress_slideLeft
+;	cmp ah, SLIDE_RIGHT
+;	je keyPress_slideRight
+	jmp keyPress
+
+keyPress_forward:
+	fadd st3					; [ ply.y+sin(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
+	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
+	fadd st1					; [ ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
+	fst dword [plycoords]		; update ply.x [ ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
+	fld dword [plycoords+4]		; reload ply.y [ ply.y+sin(plyangle), ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
+								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	jmp projector
+	
+keyPress_backward:
+	fsub st3					; [ ply.y-sin(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
+	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
+	fsub st1					; [ ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
+	fst dword [plycoords]		; update ply.x [ ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
+	fld dword [plycoords+4]		; reload ply.y [ ply.y-sin(plyangle), ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
+								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	jmp projector
+	
+;keyPress_slideLeft:			; SLIDING: switched off feature -- doesn't fit in 512 bytes
+;	fsub st2					; [ ply.y-cos(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
+;	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
+;	fadd st2					; [ ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
+;	fst dword [plycoords]		; update ply.x [ ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
+;	fld dword [plycoords+4]		; reload ply.y [ ply.y-cos(plyangle), ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
+;								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+;	jmp projector
+;	
+;keyPress_slideRight:
+;	fadd st2					; [ ply.y+cos(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
+;	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
+;	fsub st2					; [ ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
+;	fst dword [plycoords]		; update ply.x [ ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
+;	fld dword [plycoords+4]		; reload ply.y [ ply.y+cos(plyangle), ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
+;								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+;	jmp projector
+
+keyPress_turnLeftRight:
+	finit						; EMPTY []
+	fld dword [plyangle]		; [ plyangle ]
+	fld dword [plyangleDelta]	; [ plyagnleDelta, plyangle ]
+	cmp ah, RIGHT_ARROW			; check if this is positive direction
+	je keyPress_turnSkipNeg		; if so, skip negation
+	fchs
+keyPress_turnSkipNeg:			; [ +-plyagnleDelta, plyangle ]
+	fadd						; [ plyangle+-plyagnleDelta ]
+	fst dword [plyangle]		; update plyangle [ plyangle+-plyagnleDelta ]
+	fsincos						; [ cos(plyangle+-plyagnleDelta), sin(plyangle+-plyagnleDelta) ]
+								; using updated variables: [ cos(plyangle), sin(plyangle) ]
+	fld dword [plycoords]		;
+	fld dword [plycoords+4]		; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+								
+projector:
+
+projector_waitForVSync:			; TODO wait for vertical sync
+
+projector_clearScreen:
+	mov cx, 320*199/2			; clear A000:0000-A000:F938h (:FA00h minus 320 bytes for stack + variables)
+	xor ax, ax
+	xor di, di
+	rep stosw
+
+	; FPU STACK:				; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
 	lea si, [polygon]			;
 	mov cx, POLYGONSIZE
 	
@@ -218,11 +317,11 @@ calcOneVertex:
 	fstp dword [di]				; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
 	
 	fld dword [di+4]			; di+4 = tz1/2, di = tx1/2
-	fild word [aspectTimesZoom]
-	fld dword [di]				; [ tx1, aspectTimesZoom, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fchs						; [ -tx1, aspectTimesZoom, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fmul						; [ -tx1*aspectTimesZoom, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fdiv st1					; [ -tx1*aspectTimesZoom/tz1, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fild word [zoomTimesAspect]
+	fld dword [di]				; [ tx1, zoomTimesAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fchs						; [ -tx1, zoomTimesAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fmul						; [ -tx1*zoomTimesAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fdiv st1					; [ -tx1*zoomTimesAspect/tz1, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
 								; di+8 = x1/2
 	fistp word [di+8]			; [ tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
 	
@@ -286,14 +385,6 @@ drawOneSide:
 	
 	ret
 	
-main:
-	mov ax, 0A000h
-	mov es, ax
-	mov ss, ax
-	mov sp, 320*200
-	mov ax, 13h
-	int 10h						; VGA Mode 13h set
-
 	nop							; end
 	
 ; stats
