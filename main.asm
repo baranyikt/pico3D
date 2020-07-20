@@ -157,11 +157,11 @@ POLYGONSIZE equ (($-polygon)/POLYGONENTRY) - 1
 
 	
 aspectTimesZoom: 
-	dw 160.0						; aspect ratio * zoom value = 320/200 * 100, factor of X coords
+	dw 160						; aspect ratio * zoom value = 320/200 * 100, factor of X coords
 zoomWOAspect:
-	dw 100.0						; zoom value (alone), factor of Y coords
+	dw 100						; zoom value (alone), factor of Y coords
 wallHeight:
-	dw 50.0
+	dw 50
 	
 	
 tx1:	dd 0
