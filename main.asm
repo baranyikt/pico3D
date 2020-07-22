@@ -168,12 +168,18 @@ wallHeight:
 
 HORZ_CENTER	equ	160
 VERT_CENTER	equ 100
+STACK_SIZE	equ 4096
 	
 main:
+	cld							; clear direction flag, as we can't assume anything
 	mov ax, 0A000h
-	mov es, ax
-	mov ss, ax
-	mov sp, 320*200
+	mov es, ax					; set ES to video segment
+	xor ax, ax
+;	cli							; surrounding CLI/STI would be needed for some early 8088 processors
+	mov ss, ax					;	since we targeting 80386 anyway, they're turned off to save space
+	mov sp, end_all+STACK_SIZE	;	see https://stackoverflow.com/questions/32701854/boot-loader-doesnt-jump-to-kernel-code/
+;	sti
+	mov ds, ax					; ES,SS,DS set, CS could be 0x0000 or 0x07c0 or anything else, doesn't matter since we don't use jump tables
 	mov ax, 13h
 	int 10h						; VGA Mode 13h set
 	
@@ -256,7 +262,7 @@ projector:
 projector_waitForVSync:			; TODO wait for vertical sync
 
 projector_clearScreen:
-	mov cx, 320*199/2			; clear A000:0000-A000:F938h (:FA00h minus 320 bytes for stack + variables)
+	mov cx, 320*200/2			; clear A000:0000-A000:FA00h (stack moved somewhere else)
 	xor ax, ax
 	xor di, di
 	rep stosw
@@ -325,6 +331,8 @@ calcOneVertex:
 
 	loop calcOneSide
 	
+	jmp keyPress
+	
 drawOneSide:
 	mov si, HORZ_CENTER			; preparing to draw side defined by x1,y1top/y1bot,x2,y2top/y2bot
 	mov cx, si
@@ -384,7 +392,9 @@ x2:		resw 1
 y2top:	resw 1
 y2bot:	resw 1
 
-; stats
+end_all:
+
+; stats (not up-to-date)
 ; plotxy			00h-15h		(21)
 ; lineDraw			15h-9eh		(137)
 ; consts			9eh-c0h		(34)
