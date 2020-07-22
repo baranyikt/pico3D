@@ -259,8 +259,6 @@ keyPress_turnSkipNeg:			; [ +-plyagnleDelta, plyangle ]
 								
 projector:
 
-projector_waitForVSync:			; TODO wait for vertical sync
-
 projector_clearScreen:
 	mov cx, 320*200/2			; clear A000:0000-A000:FA00h (stack moved somewhere else)
 	xor ax, ax
@@ -273,6 +271,7 @@ projector_clearScreen:
 	
 calcOneSide:
 	lea di, [tx1]				; set to ....1 variableset
+	mov [plotxy_color], cl		; set color of current side
 	push cx						; save cx for outer loop
 	mov cl, 2					; two vertices at a time -- setting CL is enough assuming that POLYGONSIZE will be < 256 at all times
 calcOneVertex:	
@@ -394,12 +393,12 @@ y2bot:	resw 1
 
 end_all:
 
-; stats (not up-to-date)
+; stats (updated)
 ; plotxy			00h-15h		(21)
 ; lineDraw			15h-9eh		(137)
 ; consts			9eh-c0h		(34)
-; main				c0h-13fh	(127)
-; projector			13fh-1b3h	(116)
-; drawOneSide		1b3h-204h	(81)
-; total							516 bytes
-
+; main				c0h-e4h		(36)		
+; main/keyPress		e4h-144h	(96)
+; projector			144h-1bfh	(123)
+; drawOneSide		1bfh-210h	(81)
+; total							528 bytes + 42 bytes BSS
