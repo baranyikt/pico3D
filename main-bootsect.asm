@@ -1,3 +1,4 @@
+org 7c00h
 cpu 386
 use16
 
@@ -372,6 +373,9 @@ plyangle:
 	dd 0
 plycoords:
 	dd 0,0
+	
+bootable_sector_signal:
+	db 0x55, 0xaa				; warning! not in the right place yet (should be at 511th and 512th position)
 
 end_of_data:	
 
