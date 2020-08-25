@@ -35,8 +35,8 @@ keyPress:
 	int 16h						; AH=0: pause and get keypress
 	cmp ah, UP_ARROW
 	je keyPress_forward
-	cmp ah, DOWN_ARROW
-	je keyPress_backward
+;	cmp ah, DOWN_ARROW
+;	je keyPress_backward
 	cmp ah, LEFT_ARROW
 	je keyPress_turnLeftRight
 	cmp ah, RIGHT_ARROW
@@ -56,14 +56,14 @@ keyPress_forward:
 								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
 	jmp projector
 	
-keyPress_backward:
-	fsub st3					; [ ply.y-sin(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
-	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
-	fsub st1					; [ ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
-	fst dword [plycoords]		; update ply.x [ ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
-	fld dword [plycoords+4]		; reload ply.y [ ply.y-sin(plyangle), ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
+;keyPress_backward:				; GOING BACKWARDS: switched off feature -- doesn't fit in 512 bytes
+;	fsub st3					; [ ply.y-sin(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
+;	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
+;	fsub st1					; [ ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
+;	fst dword [plycoords]		; update ply.x [ ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
+;	fld dword [plycoords+4]		; reload ply.y [ ply.y-sin(plyangle), ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
 								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	jmp projector
+;	jmp projector
 	
 ;keyPress_slideLeft:			; SLIDING: switched off feature -- doesn't fit in 512 bytes
 ;	fsub st2					; [ ply.y-cos(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
@@ -346,8 +346,6 @@ skipXincNow:
 
 	ret							; return from lineDraw, no registers preserved
 	
-	nop							; end marker
-
 ; start of static/const variables section
 
 plyangleDelta:					
@@ -370,14 +368,16 @@ zoomWOAspect:
 wallHeight:
 	dw 50
 
+plyangle:
+	dd 0
+plycoords:
+	dd 0,0
+
+end_of_data:	
+
 ; start of uninitialized variables section (BSS)
 
 plotxy_color:	resb 1			; color of the pixel drawn in plotxy
-
-plyangle:
-	resd 1						; TODO should be cleared on-the-fly
-plycoords:
-	resd 2						; TODO should be cleared on-the-fly
 
 tx1:	resd 1
 tz1:	resd 1
@@ -393,14 +393,15 @@ x2:		resw 1
 y2top:	resw 1
 y2bot:	resw 1
 
-end_all:						; end of all valuable code/data, stack area will be STACK_SIZE bytes starting from here
+end_all: nop						; end of all valuable code/data, stack area will be STACK_SIZE bytes starting from here
 
-; stats (not up-to-date)
-; plotxy			00h-15h		(21)
-; lineDraw			15h-9eh		(137)
-; consts			9eh-c0h		(34)
-; main				c0h-e4h		(36)		
-; main/keyPress		e4h-144h	(96)
-; projector			144h-1bfh	(123)
-; drawOneSide		1bfh-210h	(81)
-; total							528 bytes + 42 bytes BSS
+; stats (updated)
+; plotxy			139h-14eh	(21)
+; lineDraw			14eh-1d7h	(137)
+; consts			1d7h-205h	(46)
+; main				000h-024h	(36)		
+; main/keyPress		024h-06dh	(73)
+; projector			06dh-0e8h	(123)
+; drawOneSide		0e8h-139h	(81)
+; BSS				205h-222h	(29)
+; total							517 bytes + 29 bytes BSS
