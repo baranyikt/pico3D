@@ -34,6 +34,7 @@ main:
 keyPress:
 	xor ah, ah
 	int 16h						; AH=0: pause and get keypress
+	lea bp, [plyangle]			; BP=[plyangle], BP+4=[plycoords], BP+8=[plycoords+4] from now
 	cmp ah, UP_ARROW
 	je keyPress_forward
 ;	cmp ah, DOWN_ARROW
@@ -50,54 +51,54 @@ keyPress:
 
 keyPress_forward:
 	fadd st3					; [ ply.y+sin(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
-	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
+	fstp dword [bp+8]			; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
 	fadd st1					; [ ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
-	fst dword [plycoords]		; update ply.x [ ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
-	fld dword [plycoords+4]		; reload ply.y [ ply.y+sin(plyangle), ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
+	fst dword [bp+4]			; update ply.x [ ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
+	fld dword [bp+8]			; reload ply.y [ ply.y+sin(plyangle), ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
 								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
 	jmp projector
 	
 ;keyPress_backward:				; GOING BACKWARDS: switched off feature -- doesn't fit in 512 bytes
 ;	fsub st3					; [ ply.y-sin(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
-;	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
+;	fstp dword [bp+8]			; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
 ;	fsub st1					; [ ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
-;	fst dword [plycoords]		; update ply.x [ ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
-;	fld dword [plycoords+4]		; reload ply.y [ ply.y-sin(plyangle), ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
+;	fst dword [bp+4]			; update ply.x [ ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
+;	fld dword [bp+8]			; reload ply.y [ ply.y-sin(plyangle), ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
 								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
 ;	jmp projector
 	
 ;keyPress_slideLeft:			; SLIDING: switched off feature -- doesn't fit in 512 bytes
 ;	fsub st2					; [ ply.y-cos(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
-;	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
+;	fstp dword [bp+8]			; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
 ;	fadd st2					; [ ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
-;	fst dword [plycoords]		; update ply.x [ ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
-;	fld dword [plycoords+4]		; reload ply.y [ ply.y-cos(plyangle), ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
+;	fst dword [bp+4]			; update ply.x [ ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
+;	fld dword [bp+8]			; reload ply.y [ ply.y-cos(plyangle), ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
 ;								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
 ;	jmp projector
 ;	
 ;keyPress_slideRight:
 ;	fadd st2					; [ ply.y+cos(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
-;	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
+;	fstp dword [bp+8]			; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
 ;	fsub st2					; [ ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
-;	fst dword [plycoords]		; update ply.x [ ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
-;	fld dword [plycoords+4]		; reload ply.y [ ply.y+cos(plyangle), ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
+;	fst dword [bp+4]			; update ply.x [ ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
+;	fld dword [bp+8]			; reload ply.y [ ply.y+cos(plyangle), ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
 ;								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
 ;	jmp projector
 
 keyPress_turnLeftRight:
 	finit						; EMPTY []
-	fld dword [plyangle]		; [ plyangle ]
+	fld dword [bp]				; [ plyangle ]
 	fld dword [plyangleDelta]	; [ plyagnleDelta, plyangle ]
 	cmp ah, RIGHT_ARROW			; check if this is positive direction
 	je keyPress_turnSkipNeg		; if so, skip negation
 	fchs
 keyPress_turnSkipNeg:			; [ +-plyagnleDelta, plyangle ]
 	fadd						; [ plyangle+-plyagnleDelta ]
-	fst dword [plyangle]		; update plyangle [ plyangle+-plyagnleDelta ]
+	fst dword [bp]				; update plyangle [ plyangle+-plyagnleDelta ]
 	fsincos						; [ cos(plyangle+-plyagnleDelta), sin(plyangle+-plyagnleDelta) ]
 								; using updated variables: [ cos(plyangle), sin(plyangle) ]
-	fld dword [plycoords]		;
-	fld dword [plycoords+4]		; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fld dword [bp+4]			;
+	fld dword [bp+8]			; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
 								
 projector:
 
@@ -369,7 +370,7 @@ zoomWOAspect:
 wallHeight:
 	dw 50
 
-plyangle:
+plyangle:						; plycoords must follow plyangle immediately for bp-based addressing in ... to work
 	dd 0
 plycoords:
 	dd 0,0
@@ -404,8 +405,9 @@ end_all: nop						; end of all valuable code/data, stack area will be STACK_SIZE
 ; lineDraw			14eh-1d7h	(137)
 ; consts			1d7h-205h	(46)
 ; main				000h-024h	(36)		
-; main/keyPress		024h-06dh	(73)
+; main/keyPress		024h-06ah 	(70)
 ; projector			06dh-0e8h	(123)
 ; drawOneSide		0e8h-139h	(81)
 ; BSS				205h-222h	(29)
-; total							517 bytes + 29 bytes BSS
+; bootable signal				(2)
+; total							516 bytes + 29 bytes BSS
