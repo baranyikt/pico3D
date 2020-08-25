@@ -1,16 +1,214 @@
 cpu 386
-; use16
+use16
 
-; lineDraw octants, e.g. octant1 is when (fromx < tox, fromy < toy, and the line is more horizontal then vertical, i.e. |tox-fromx| > |toy-fromy|
-;      octant2
-; \  |  /
-;  \ | /
-;   \|/ octant1
-; ---|---
-;   /|\ octant8
-;  / | \
-; /  |  \
+UP_ARROW	equ	075h			; UP KEY SCAN CODE
+DOWN_ARROW	equ	072h			; DOWN KEY
+LEFT_ARROW	equ	06Bh			; LEFT KEY
+RIGHT_ARROW	equ	074h			; RIGHT KEY
+SLIDE_LEFT	equ	06Ch			; HOME KEY
+SLIDE_RIGHT	equ	069h			; END KEY
+HORZ_CENTER	equ	160				; center of screen, horizontal
+VERT_CENTER	equ 100				; vertical
+STACK_SIZE	equ 4096			; 4K of stack (after BSS section) should be enough
 
+main:
+	cld							; clear direction flag, as we can't assume anything
+	mov ax, 0A000h
+	mov es, ax					; set ES to video segment
+	xor ax, ax
+;	cli							; surrounding CLI/STI would be needed for some early 8088 processors
+	mov ss, ax					;	since we targeting 80386 anyway, they're turned off to save space
+	mov sp, end_all+STACK_SIZE	;	see https://stackoverflow.com/questions/32701854/boot-loader-doesnt-jump-to-kernel-code/
+;	sti
+	mov ds, ax					; ES,SS,DS set, CS could be 0x0000 or 0x07c0 or anything else, doesn't matter since we don't use jump tables
+	mov ax, 13h
+	int 10h						; VGA Mode 13h set
+	
+	fld dword [plyangle]		; 
+	fsincos						; [ cos(plyangle), sin(plyangle) ]
+	fld dword [plycoords]		;
+	fld dword [plycoords+4]		; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	jmp projector				; at the very first time, having set up preconditions for projector, jump there straight 
+								; 	to have our first screen layout before any key need to be pressed
+keyPress:
+	xor ah, ah
+	int 16h						; AH=0: pause and get keypress
+	cmp ah, UP_ARROW
+	je keyPress_forward
+	cmp ah, DOWN_ARROW
+	je keyPress_backward
+	cmp ah, LEFT_ARROW
+	je keyPress_turnLeftRight
+	cmp ah, RIGHT_ARROW
+	je keyPress_turnLeftRight
+;	cmp ah, SLIDE_LEFT			; SLIDING: switched off feature -- doesn't fit in 512 bytes
+;	je keyPress_slideLeft
+;	cmp ah, SLIDE_RIGHT
+;	je keyPress_slideRight
+	jmp keyPress
+
+keyPress_forward:
+	fadd st3					; [ ply.y+sin(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
+	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
+	fadd st1					; [ ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
+	fst dword [plycoords]		; update ply.x [ ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
+	fld dword [plycoords+4]		; reload ply.y [ ply.y+sin(plyangle), ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
+								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	jmp projector
+	
+keyPress_backward:
+	fsub st3					; [ ply.y-sin(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
+	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
+	fsub st1					; [ ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
+	fst dword [plycoords]		; update ply.x [ ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
+	fld dword [plycoords+4]		; reload ply.y [ ply.y-sin(plyangle), ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
+								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	jmp projector
+	
+;keyPress_slideLeft:			; SLIDING: switched off feature -- doesn't fit in 512 bytes
+;	fsub st2					; [ ply.y-cos(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
+;	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
+;	fadd st2					; [ ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
+;	fst dword [plycoords]		; update ply.x [ ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
+;	fld dword [plycoords+4]		; reload ply.y [ ply.y-cos(plyangle), ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
+;								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+;	jmp projector
+;	
+;keyPress_slideRight:
+;	fadd st2					; [ ply.y+cos(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
+;	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
+;	fsub st2					; [ ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
+;	fst dword [plycoords]		; update ply.x [ ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
+;	fld dword [plycoords+4]		; reload ply.y [ ply.y+cos(plyangle), ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
+;								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+;	jmp projector
+
+keyPress_turnLeftRight:
+	finit						; EMPTY []
+	fld dword [plyangle]		; [ plyangle ]
+	fld dword [plyangleDelta]	; [ plyagnleDelta, plyangle ]
+	cmp ah, RIGHT_ARROW			; check if this is positive direction
+	je keyPress_turnSkipNeg		; if so, skip negation
+	fchs
+keyPress_turnSkipNeg:			; [ +-plyagnleDelta, plyangle ]
+	fadd						; [ plyangle+-plyagnleDelta ]
+	fst dword [plyangle]		; update plyangle [ plyangle+-plyagnleDelta ]
+	fsincos						; [ cos(plyangle+-plyagnleDelta), sin(plyangle+-plyagnleDelta) ]
+								; using updated variables: [ cos(plyangle), sin(plyangle) ]
+	fld dword [plycoords]		;
+	fld dword [plycoords+4]		; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+								
+projector:
+
+	mov cx, 320*200/2			; clearScreen, fill whole video memory area w/ zeros (A000:0000-A000:FA00h, stack moved somewhere else)
+	xor ax, ax
+	xor di, di
+	rep stosw
+
+	; FPU STACK:				; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	lea si, [polygon]			;
+	mov cx, POLYGONSIZE
+	
+calcOneSide:
+	lea di, [tx1]				; set to ....1 variableset
+	mov [plotxy_color], cl		; set color of current side
+	push cx						; save cx for outer loop
+	mov cl, 2					; two vertices at a time -- setting CL is enough assuming that POLYGONSIZE will be < 256 at all times
+calcOneVertex:	
+	fild word [si]				; [ pgn[i].x, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fsub st2					; [ pgn[i].x-ply.x, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fild word [si+2]			; [ pgn[i].y, pgn[i].x-ply.x, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fsub st2					; [ pgn[i].y-ply.y, pgn[i].x-ply.x, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+								;   ------ty------  ------tx------
+	fld st1						; [ tx, ty, tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fmul st5					; [ tx*cos(angle), ty, tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	
+	fld st1						; [ ty, tx*cos(angle), ty, tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fmul st7					; FULL [ ty*sin(angle), tx*cos(angle), ty, tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fadd						; [ tx*cos(angle)+ty*sin(angle), ty, tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	
+								; di+4 = tz1 or 2
+	fstp dword [di+4]			; [ ty, tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	
+	fmul st4					; [ ty*cos(plyangle), tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fxch st1					; [ tx, ty*cos(plyangle), ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fmul st5					; [ tx*sin(plyangle), ty*cos(plyangle), ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fsub						; [ tx*sin(plyangle)-ty*cos(plyangle), ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+								; di = tx1/2
+	fstp dword [di]				; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	
+	fld dword [di+4]			; di+4 = tz1/2, di = tx1/2
+	fild word [zoomTimesAspect]
+	fld dword [di]				; [ tx1, zoomTimesAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fchs						; [ -tx1, zoomTimesAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fmul						; [ -tx1*zoomTimesAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fdiv st1					; [ -tx1*zoomTimesAspect/tz1, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+								; di+8 = x1/2
+	fistp word [di+8]			; [ tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	
+	fild word [zoomWOAspect]	;
+	fild word [wallHeight]		; [ wallHeight, zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fld st0						; FULL [ wallHeight, wallHeight, zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fchs						; FULL [ -wallHeight, wallHeight, zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fmul st2					; FULL [ -wallHeight*zoomWOAspect, wallHeight, zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fdiv st3					; FULL [ -wallHeight*zoomWOAspect/tz1, wallHeight, zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+								; di+10 = y1top/y2top, di+12 = y1bot/y2bot
+	fistp word [di+10]			; [ wallHeight, zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fmul						; [ wallHeight*zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fdiv						; [ wallHeight*zoomWOAspect/tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+	fistp word [di+12]			; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
+								; FPU stack ready for next iteration
+
+	add si, POLYGONENTRY		; move to next vertex
+	add di, TEMPVARSIZE			; move to ...2 variableset
+	loop calcOneVertex
+
+	call drawOneSide			; draw side defined by x1,y1top/y1bot,x2,y2top/y2bot
+
+	pop cx
+	sub si, POLYGONENTRY		; two steps forward minus one step back = one step fwd
+
+	loop calcOneSide
+	
+	jmp keyPress				; infinite loop - no return from main
+	
+drawOneSide:
+	mov si, HORZ_CENTER			; preparing to draw side defined by x1,y1top/y1bot,x2,y2top/y2bot
+	mov cx, si
+	mov di, VERT_CENTER
+	mov dx, di
+
+	pusha						; pusha instead of individual push's, stack memory is cheaper than instruction space
+								; +1 saves si,di,cx,dx at HCENTER,VCENTER,HCENTER,VCENTER
+	
+	add si, [x1]
+	add cx, [x2]
+	pusha						; +2 saves si,di,cx,dx at HCENTER+x1,VCENTER,HCENTER+x2,VCENTER
+	add di, [y1top]
+	add dx, [y2top]
+	call lineDraw				; TOP edge: (HCENTER+x1,VCENTER+y1top)->(HCENTER+x2,VCENTER+y2top)
+	popa						; +1 restores HCENTER+x1,VCENTER,HCENTER+x2,VCENTER
+	add di, [y1bot]
+	add dx, [y2bot]
+	call lineDraw				; BOTTOM edge: (HCENTER+x1,VCENTER+y1bot)->(HCENTER+x2,VCENTER+y2bot)
+	popa						; 0 restores HCENTER,VCENTER,HCENTER,VCENTER
+	
+	pusha						; +1 saves HCENTER,VCENTER,HCENTER,VCENTER
+	add si, [x1]
+	add di, [y1top]
+	mov cx, si
+	add dx, [y1bot]
+	call lineDraw				; LEFT edge: (HCENTER+x1,VCENTER+y1top)->(HCENTER+x1,VCENTER+y1bot)
+	popa						; 0 restores HCENTER,VCENTER,HCENTER,VCENTER
+	add si, [x2]
+	add di, [y2top]
+	mov cx, si
+	add dx, [y2bot]
+	call lineDraw				; RIGHT edge: (HCENTER+x2,VCENTER+y2top)->(HCENTER+x2,VCENTER+y2bot)
+	
+	ret							; return from drawOneSide
+	
+	
 plotxy:							; puts pixel into (si,di) of color plotxy_color
 								; assumes: es=video seg
 	push di
@@ -24,7 +222,17 @@ plotxy:							; puts pixel into (si,di) of color plotxy_color
 	stosb
 	pop ax
 	pop di
-	ret
+	ret							; return from plotxy, all registers preserved
+
+; lineDraw octants, e.g. octant1 is when (fromx < tox, fromy < toy, and the line is more horizontal then vertical, i.e. |tox-fromx| > |toy-fromy|
+;      octant2
+; \  |  /
+;  \ | /
+;   \|/ octant1
+; ---|---
+;   /|\ octant8
+;  / | \
+; /  |  \
 
 lineDraw:						; draws line from (si,di) to (cx,dx) with color plotxy_color
 
@@ -136,16 +344,13 @@ skipXincNow:
 	cmp di, dx					; have we reached toy?
 	jle lineDrawMainLoop_horzdom
 
-	ret
+	ret							; return from lineDraw, no registers preserved
 	
-UP_ARROW	equ	075h
-DOWN_ARROW	equ	072h
-LEFT_ARROW	equ	06Bh
-RIGHT_ARROW	equ	074h
-SLIDE_LEFT	equ	06Ch	; HOME
-SLIDE_RIGHT	equ	069h	; END
-	
-plyangleDelta:
+	nop							; end marker
+
+; start of static/const variables section
+
+plyangleDelta:					
 	dd 0.01
 	
 polygon: 
@@ -157,7 +362,6 @@ polygon:
 	dw 0, 1
 POLYGONENTRY equ (2 * 2)
 POLYGONSIZE equ (($-polygon)/POLYGONENTRY) - 1
-
 	
 zoomTimesAspect: 
 	dw 160						; aspect ratio * zoom value = 320/200 * 100, factor of X coords
@@ -166,216 +370,14 @@ zoomWOAspect:
 wallHeight:
 	dw 50
 
-HORZ_CENTER	equ	160
-VERT_CENTER	equ 100
-STACK_SIZE	equ 4096
-	
-main:
-	cld							; clear direction flag, as we can't assume anything
-	mov ax, 0A000h
-	mov es, ax					; set ES to video segment
-	xor ax, ax
-;	cli							; surrounding CLI/STI would be needed for some early 8088 processors
-	mov ss, ax					;	since we targeting 80386 anyway, they're turned off to save space
-	mov sp, end_all+STACK_SIZE	;	see https://stackoverflow.com/questions/32701854/boot-loader-doesnt-jump-to-kernel-code/
-;	sti
-	mov ds, ax					; ES,SS,DS set, CS could be 0x0000 or 0x07c0 or anything else, doesn't matter since we don't use jump tables
-	mov ax, 13h
-	int 10h						; VGA Mode 13h set
-	
-	fld dword [plyangle]		; 
-	fsincos						; [ cos(plyangle), sin(plyangle) ]
-	fld dword [plycoords]		;
-	fld dword [plycoords+4]		; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	jmp projector				; at the very first time, having set up preconditions for projector, jump there straight 
-								; 	to have our first screen layout before any key need to be pressed
-keyPress:
-	xor ah, ah
-	int 16h						; AH=0: pause and get keypress
-	cmp ah, UP_ARROW
-	je keyPress_forward
-	cmp ah, DOWN_ARROW
-	je keyPress_backward
-	cmp ah, LEFT_ARROW
-	je keyPress_turnLeftRight
-	cmp ah, RIGHT_ARROW
-	je keyPress_turnLeftRight
-;	cmp ah, SLIDE_LEFT			; SLIDING: switched off feature -- doesn't fit in 512 bytes
-;	je keyPress_slideLeft
-;	cmp ah, SLIDE_RIGHT
-;	je keyPress_slideRight
-	jmp keyPress
+; start of uninitialized variables section (BSS)
 
-keyPress_forward:
-	fadd st3					; [ ply.y+sin(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
-	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
-	fadd st1					; [ ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
-	fst dword [plycoords]		; update ply.x [ ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
-	fld dword [plycoords+4]		; reload ply.y [ ply.y+sin(plyangle), ply.x+cos(plyangle), cos(plyangle), sin(plyangle) ]
-								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	jmp projector
-	
-keyPress_backward:
-	fsub st3					; [ ply.y-sin(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
-	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
-	fsub st1					; [ ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
-	fst dword [plycoords]		; update ply.x [ ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
-	fld dword [plycoords+4]		; reload ply.y [ ply.y-sin(plyangle), ply.x-cos(plyangle), cos(plyangle), sin(plyangle) ]
-								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	jmp projector
-	
-;keyPress_slideLeft:			; SLIDING: switched off feature -- doesn't fit in 512 bytes
-;	fsub st2					; [ ply.y-cos(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
-;	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
-;	fadd st2					; [ ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
-;	fst dword [plycoords]		; update ply.x [ ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
-;	fld dword [plycoords+4]		; reload ply.y [ ply.y-cos(plyangle), ply.x+sin(plyangle), cos(plyangle), sin(plyangle) ]
-;								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-;	jmp projector
-;	
-;keyPress_slideRight:
-;	fadd st2					; [ ply.y+cos(plyangle), ply.x, cos(plyangle), sin(plyangle) ]
-;	fstp dword [plycoords+4]	; update ply.y [ ply.x, cos(plyangle), sin(plyangle) ]
-;	fsub st2					; [ ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
-;	fst dword [plycoords]		; update ply.x [ ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
-;	fld dword [plycoords+4]		; reload ply.y [ ply.y+cos(plyangle), ply.x-sin(plyangle), cos(plyangle), sin(plyangle) ]
-;								; using updated variables: [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-;	jmp projector
-
-keyPress_turnLeftRight:
-	finit						; EMPTY []
-	fld dword [plyangle]		; [ plyangle ]
-	fld dword [plyangleDelta]	; [ plyagnleDelta, plyangle ]
-	cmp ah, RIGHT_ARROW			; check if this is positive direction
-	je keyPress_turnSkipNeg		; if so, skip negation
-	fchs
-keyPress_turnSkipNeg:			; [ +-plyagnleDelta, plyangle ]
-	fadd						; [ plyangle+-plyagnleDelta ]
-	fst dword [plyangle]		; update plyangle [ plyangle+-plyagnleDelta ]
-	fsincos						; [ cos(plyangle+-plyagnleDelta), sin(plyangle+-plyagnleDelta) ]
-								; using updated variables: [ cos(plyangle), sin(plyangle) ]
-	fld dword [plycoords]		;
-	fld dword [plycoords+4]		; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-								
-projector:
-
-projector_clearScreen:
-	mov cx, 320*200/2			; clear A000:0000-A000:FA00h (stack moved somewhere else)
-	xor ax, ax
-	xor di, di
-	rep stosw
-
-	; FPU STACK:				; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	lea si, [polygon]			;
-	mov cx, POLYGONSIZE
-	
-calcOneSide:
-	lea di, [tx1]				; set to ....1 variableset
-	mov [plotxy_color], cl		; set color of current side
-	push cx						; save cx for outer loop
-	mov cl, 2					; two vertices at a time -- setting CL is enough assuming that POLYGONSIZE will be < 256 at all times
-calcOneVertex:	
-	fild word [si]				; [ pgn[i].x, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fsub st2					; [ pgn[i].x-ply.x, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fild word [si+2]			; [ pgn[i].y, pgn[i].x-ply.x, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fsub st2					; [ pgn[i].y-ply.y, pgn[i].x-ply.x, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-								;   ------ty------  ------tx------
-	fld st1						; [ tx, ty, tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fmul st5					; [ tx*cos(angle), ty, tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	
-	fld st1						; [ ty, tx*cos(angle), ty, tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fmul st7					; FULL [ ty*sin(angle), tx*cos(angle), ty, tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fadd						; [ tx*cos(angle)+ty*sin(angle), ty, tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	
-								; di+4 = tz1 or 2
-	fstp dword [di+4]			; [ ty, tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	
-	fmul st4					; [ ty*cos(plyangle), tx, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fxch st1					; [ tx, ty*cos(plyangle), ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fmul st5					; [ tx*sin(plyangle), ty*cos(plyangle), ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fsub						; [ tx*sin(plyangle)-ty*cos(plyangle), ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-								; di = tx1/2
-	fstp dword [di]				; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	
-	fld dword [di+4]			; di+4 = tz1/2, di = tx1/2
-	fild word [zoomTimesAspect]
-	fld dword [di]				; [ tx1, zoomTimesAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fchs						; [ -tx1, zoomTimesAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fmul						; [ -tx1*zoomTimesAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fdiv st1					; [ -tx1*zoomTimesAspect/tz1, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-								; di+8 = x1/2
-	fistp word [di+8]			; [ tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	
-	fild word [zoomWOAspect]	;
-	fild word [wallHeight]		; [ wallHeight, zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fld st0						; FULL [ wallHeight, wallHeight, zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fchs						; FULL [ -wallHeight, wallHeight, zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fmul st2					; FULL [ -wallHeight*zoomWOAspect, wallHeight, zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fdiv st3					; FULL [ -wallHeight*zoomWOAspect/tz1, wallHeight, zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-								; di+10 = y1top/y2top, di+12 = y1bot/y2bot
-	fistp word [di+10]			; [ wallHeight, zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fmul						; [ wallHeight*zoomWOAspect, tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fdiv						; [ wallHeight*zoomWOAspect/tz1, ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-	fistp word [di+12]			; [ ply.y, ply.x, cos(plyangle), sin(plyangle) ]
-								; FPU stack ready for next iteration
-
-	add si, POLYGONENTRY		; move to next vertex
-	add di, TEMPVARSIZE			; move to ...2 variableset
-	loop calcOneVertex
-
-	call drawOneSide			; draw side defined by x1,y1top/y1bot,x2,y2top/y2bot
-
-	pop cx
-	sub si, POLYGONENTRY		; two steps forward minus one step back = one step fwd
-
-	loop calcOneSide
-	
-	jmp keyPress
-	
-drawOneSide:
-	mov si, HORZ_CENTER			; preparing to draw side defined by x1,y1top/y1bot,x2,y2top/y2bot
-	mov cx, si
-	mov di, VERT_CENTER
-	mov dx, di
-
-	pusha						; pusha instead of individual push's, stack memory is cheaper than instruction space
-								; +1 saves si,di,cx,dx at HCENTER,VCENTER,HCENTER,VCENTER
-	
-	add si, [x1]
-	add cx, [x2]
-	pusha						; +2 saves si,di,cx,dx at HCENTER+x1,VCENTER,HCENTER+x2,VCENTER
-	add di, [y1top]
-	add dx, [y2top]
-	call lineDraw				; TOP edge: (HCENTER+x1,VCENTER+y1top)->(HCENTER+x2,VCENTER+y2top)
-	popa						; +1 restores HCENTER+x1,VCENTER,HCENTER+x2,VCENTER
-	add di, [y1bot]
-	add dx, [y2bot]
-	call lineDraw				; BOTTOM edge: (HCENTER+x1,VCENTER+y1bot)->(HCENTER+x2,VCENTER+y2bot)
-	popa						; 0 restores HCENTER,VCENTER,HCENTER,VCENTER
-	
-	pusha						; +1 saves HCENTER,VCENTER,HCENTER,VCENTER
-	add si, [x1]
-	add di, [y1top]
-	mov cx, si
-	add dx, [y1bot]
-	call lineDraw				; LEFT edge: (HCENTER+x1,VCENTER+y1top)->(HCENTER+x1,VCENTER+y1bot)
-	popa						; 0 restores HCENTER,VCENTER,HCENTER,VCENTER
-	add si, [x2]
-	add di, [y2top]
-	mov cx, si
-	add dx, [y2bot]
-	call lineDraw				; RIGHT edge: (HCENTER+x2,VCENTER+y2top)->(HCENTER+x2,VCENTER+y2bot)
-	
-	ret
-	
-	nop							; end
-	
 plotxy_color:	resb 1			; color of the pixel drawn in plotxy
 
 plyangle:
-	resd 1
+	resd 1						; TODO should be cleared on-the-fly
 plycoords:
-	resd 2
+	resd 2						; TODO should be cleared on-the-fly
 
 tx1:	resd 1
 tz1:	resd 1
@@ -391,9 +393,9 @@ x2:		resw 1
 y2top:	resw 1
 y2bot:	resw 1
 
-end_all:
+end_all:						; end of all valuable code/data, stack area will be STACK_SIZE bytes starting from here
 
-; stats (updated)
+; stats (not up-to-date)
 ; plotxy			00h-15h		(21)
 ; lineDraw			15h-9eh		(137)
 ; consts			9eh-c0h		(34)
